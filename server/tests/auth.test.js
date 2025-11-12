@@ -90,7 +90,7 @@ describe('Authentication controller integration', () => {
   test('returns the public profile for the currently authenticated user', async () => {
     const response = await fetch(`${baseUrl}/auth/me`, {
       headers: { Authorization: `Bearer ${issuedToken}` }
-    });
+    });//okoko
 
     const payload = await response.json();
 

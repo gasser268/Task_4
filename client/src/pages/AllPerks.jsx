@@ -1,92 +1,97 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
-import { Routes, Route } from 'react-router-dom';
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { api } from '../api'
 
-import AllPerks from '../src/pages/AllPerks.jsx';
-import { renderWithRouter } from './utils/renderWithRouter.js';
+export default function AllPerks() {
+  const [perks, setPerks] = useState([])
+  const [nameFilter, setNameFilter] = useState('')
+  const [merchantFilter, setMerchantFilter] = useState('')
+  const [merchants, setMerchants] = useState([])
 
-describe('AllPerks page (Directory)', () => {
-  test('lists public perks and responds to name filtering', async () => {
-    const seededPerk = global.__TEST_CONTEXT__.seededPerk;
-
-    renderWithRouter(
-      <Routes>
-        <Route path="/explore" element={<AllPerks />} />
-      </Routes>,
-      { initialEntries: ['/explore'] }
-    );
-
-    // Wait up to 5 seconds for perks to load
-    await waitFor(
-      () => {
-        // Try to match either the perk title or partial substring
-        const perkElement = screen.queryByText((content) =>
-          content.includes(seededPerk.title)
-        );
-        expect(perkElement).toBeInTheDocument();
-      },
-      { timeout: 5000 }
-    );
-
-    const nameFilter = screen.getByPlaceholderText(/enter perk name/i);
-    fireEvent.change(nameFilter, { target: { value: seededPerk.title } });
-
-    await waitFor(
-      () => {
-        const filtered = screen.queryByText((content) =>
-          content.includes(seededPerk.title)
-        );
-        expect(filtered).toBeInTheDocument();
-      },
-      { timeout: 3000 }
-    );
-
-    expect(screen.getByText(/showing/i)).toHaveTextContent(/showing/i);
-  });
-
-  test('lists public perks and responds to merchant filtering', async () => {
-    const seededPerk = global.__TEST_CONTEXT__.seededPerk;
-
-    renderWithRouter(
-      <Routes>
-        <Route path="/explore" element={<AllPerks />} />
-      </Routes>,
-      { initialEntries: ['/explore'] }
-    );
-
-    // Wait until the perks have loaded
-    await waitFor(
-      () => {
-        const perkElement = screen.queryByText((content) =>
-          content.includes(seededPerk.title)
-        );
-        expect(perkElement).toBeInTheDocument();
-      },
-      { timeout: 5000 }
-    );
-
-    // Try to find the merchant dropdown or combobox
-    const merchantSelect =
-      screen.queryByRole('combobox') ||
-      screen.queryByPlaceholderText(/merchant/i) ||
-      screen.queryByLabelText(/merchant/i);
-
-    if (!merchantSelect) {
-      throw new Error('Could not find merchant dropdown in DOM');
+  async function load() {
+    try {
+      const res = await api.get('/perks', { 
+        params: { 
+          q: nameFilter || undefined,
+          merchant: merchantFilter || undefined
+        } 
+      })
+      setPerks(res.data.perks)
+    } catch (err) {
+      console.error('Failed to load perks:', err)
+      setPerks([])
     }
+  }
 
-    // Apply the merchant filter
-    fireEvent.change(merchantSelect, { target: { value: seededPerk.merchant } });
+  // Load unique merchants on mount
+  useEffect(() => {
+    async function loadMerchants() {
+      try {
+        const res = await api.get('/perks')
+        const uniqueMerchants = [...new Set(res.data.perks.map(p => p.merchant))]
+        setMerchants(uniqueMerchants.sort())
+      } catch (err) {
+        console.error('Failed to load merchants:', err)
+      }
+    }
+    loadMerchants()
+  }, [])
 
-    await waitFor(
-      () => {
-        const perkElement = screen.queryByText((content) =>
-          content.includes(seededPerk.title)
-        );
-        expect(perkElement).toBeInTheDocument();
-      },
-      { timeout: 3000 }
-    );
+  // Load perks when filters change
+  useEffect(() => {
+    load()
+  }, [nameFilter, merchantFilter])
 
-    expect(screen.getByText(/showing/i)).toHaveTextContent(/showing/i);
-  });
-});
+  const filteredCount = perks.length
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-2xl font-bold">Explore All Perks</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <input
+          type="text"
+          placeholder="Enter perk name to filter..."
+          value={nameFilter}
+          onChange={(e) => setNameFilter(e.target.value)}
+          className="input"
+        />
+        <select
+          value={merchantFilter}
+          onChange={(e) => setMerchantFilter(e.target.value)}
+          className="input"
+        >
+          <option value="">All Merchants</option>
+          {merchants.map(merchant => (
+            <option key={merchant} value={merchant}>
+              {merchant}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="text-sm text-zinc-600">
+        Showing {filteredCount} perk{filteredCount !== 1 ? 's' : ''}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {perks.map(p => (
+          <Link 
+            key={p._id} 
+            to={`/perks/${p._id}/view`}
+            className="card hover:shadow-md transition-shadow cursor-pointer block"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold">{p.title}</div>
+                <div className="text-sm text-zinc-600">{p.merchant} • {p.category} • {p.discountPercent}%</div>
+              </div>
+            </div>
+            {p.description && <p className="mt-2 text-sm">{p.description}</p>}
+          </Link>
+        ))}
+        {perks.length === 0 && <div className="text-sm text-zinc-600">No perks found.</div>}
+      </div>
+    </div>
+  )
+}
